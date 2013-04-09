@@ -1872,21 +1872,44 @@ function yourls_favicon( $echo = true ) {
 /**
  * Check for maintenance mode. If yes, die. See yourls_maintenance_mode(). Stolen from WP.
  *
+ * This function checks the existence and age of YOURLS_ABSPATH / .maintenance
+ * If the files is less than 600 seconds old, we are in maintenance mode. The maintenance
+ * mode defaults to a yourls_die() with a maintenance message, but can also dictate another
+ * behavior, based on the result of yourls_do_action( 'maintenance_check_behavior' ) with passed
+ * arguments.
+ *
+ * The idea is that depending on the situation, we may want to have different maintenance modes:
+ *  - whatever the request is, die() with a "we're upgrading" message
+ *  - allow READ stuff (redirect, display stats) but not WRITE queries (no logging)
+ *  - allow admin action in the /admin area but no public action like redirection
+ *  - any custom scenario
+ *
+ * @since 1.6
  */
-function yourls_check_maintenance_mode() {
+function yourls_maintenance_check() {
 
 	$file = YOURLS_ABSPATH . '/.maintenance' ;
+	// No maintenance if no file, or if we are runnning upgrade & install procedures
 	if ( !file_exists( $file ) || yourls_is_upgrading() || yourls_is_installing() )
 		return;
 	
-	global $maintenance_start;
+	global $yourls_maintenance, $yourls_maintenance_behavior;
 
 	include( $file );
-	// If the $maintenance_start timestamp is older than 10 minutes, don't die.
-	if ( ( time() - $maintenance_start ) >= 600 )
+	// If the $maintenance_start timestamp is older than 10 minutes (default), don't die.
+	if ( ( time() - $yourls_maintenance['time'] ) >= yourls_apply_filters( 'maintenance_check_duration', 600 ) )
 		return;
-
-	// Use any /user/maintenance.php file
+	
+	// We are in maintenance mode. Is there any special behavior to enforce, or do we just die() ?
+	$yourls_maintenance_behavior = yourls_apply_filter( 'maintenance_check_behavior', $yourls_maintenance );
+	if( $yourls_maintenance_behavior === false )
+		return;
+	/* Core YOURLS functions can now add a filter on 'maintenance_check_behavior', check value passed and
+	 * interrupt the maintenance mode (return a false), do anything else (die with another message for instance)
+	 * or just let go. */
+	
+	// Include file /user/maintenance.php is exists
+	// This file has to be independant from YOURLS and cannot use YOURLS functions.
 	if( file_exists( YOURLS_USERDIR.'/maintenance.php' ) ) {
 		include( YOURLS_USERDIR.'/maintenance.php' );
 		die();
@@ -1899,6 +1922,58 @@ function yourls_check_maintenance_mode() {
 	yourls_die( $message, $title , 503 );
 
 }
+
+/**
+ * Check maintenance mode behavior
+ *
+ * The idea is that depending on the situation, we may want to have different maintenance modes:
+ *  - whatever the request is, die() with a "we're upgrading" message
+ *  - allow READ stuff (redirect, display stats) but not WRITE queries (no logging)
+ *  - allow admin action in the /admin area but no public action like redirection
+ *  - any custom scenario
+ *
+ * @since 1.6
+ * @param string $meta arbitrary string that will trigger an action
+ * @return string Result
+ */
+function yourls_maintenance_behavior( $meta ) {
+	global $ydb;
+	var_dump( $ydb );
+	die();
+}
+
+/**
+ * Toggle maintenance mode. Inspired from WP. Returns true for success, false otherwise
+ *
+ * Long desc, multiline
+ *
+ * @since 1.6
+ * @param bool $active true to enable, false to disable
+ * @param string $meta arbitrary string to pass additional details or a function callback. See yourls_maintenance_behavior()
+ * @return bool file write or file unlink result
+ */
+function yourls_maintenance_toggle( $active = true, $meta = '' ) {
+
+	$file = YOURLS_ABSPATH . '/.maintenance' ;
+
+	// Turn maintenance mode on : create .maintenance file
+	if ( (bool)$active ) {
+		if ( ! ( $fp = @fopen( $file, 'w' ) ) )
+			return false;
+		$yourls_maintenance  = var_export( array( 'time' => time(), 'meta' => $meta ), true );
+		@fwrite( $fp, '<' . '?php $yourls_maintenance = ' . $yourls_maintenance . ";\n" );
+		@fclose( $fp );
+		@chmod ( $file, 0644 ); // Read and write for owner, read for everybody else
+
+		// Not sure why the fwrite would fail if the fopen worked... Just in case
+		return( is_readable( $file ) );
+		
+	// Turn maintenance mode off : delete the .maintenance file
+	} else {
+		return @unlink( $file );
+	}
+}
+
 
 /**
  * Return current admin page, or null if not an admin page

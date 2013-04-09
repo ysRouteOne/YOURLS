@@ -127,7 +127,7 @@ if( file_exists( YOURLS_USERDIR.'/cache.php' ) )
 yourls_load_default_textdomain();
 
 // Check if we are in maintenance mode - if yes, it will die here.
-yourls_check_maintenance_mode();
+yourls_maintenance_check();
 	
 // If request for an admin page is http:// and SSL is required, redirect
 if( yourls_is_admin() && yourls_needs_ssl() && !yourls_is_ssl() ) {
