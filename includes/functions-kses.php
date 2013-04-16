@@ -42,8 +42,7 @@
  * The code for these vars is here and ready for any future use 
  */
 
-// Initialize empty values in globals - populate after plugins have loaded to allow user defined values
-$yourls_allowedentitynames = $yourls_allowedprotocols = array();
+// Populate after plugins have loaded to allow user defined values
 yourls_add_action( 'plugins_loaded', 'yourls_kses_init' );
  
 /**
@@ -532,7 +531,6 @@ function yourls_kses_allowed_protocols() {
 		'ssh://', 'svn://', 'svn+ssh://', 'git://', 'cvs://',
 		'apt:',
 		'market://', // Google Play
-		'data:',
 		'view-source:',
 		
 		// P2P
@@ -557,6 +555,7 @@ function yourls_kses_allowed_protocols() {
 		/*
 		'about:', 'chrome://', 'chrome-extension://',
 		'javascript:', 
+		'data:',
 		*/
 	);
 }
