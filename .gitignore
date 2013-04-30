@@ -6,8 +6,8 @@
 user/*
 !user/config-sample.php
 user/maintenance.php
-.htaccess
 .maintenance
+.htaccess
 *.config
 *.conf
 [Rr]obots.txt
