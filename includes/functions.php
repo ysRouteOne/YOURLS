@@ -1888,7 +1888,7 @@ function yourls_favicon( $echo = true ) {
  *  - allow admin action in the /admin area but no public action like redirection
  *  - any custom scenario
  *
- * @since 1.6
+ * @since 1.7
  */
 function yourls_maintenance_check() {
 
@@ -1936,7 +1936,7 @@ function yourls_maintenance_check() {
  *  - allow admin action in the /admin area but no public action like redirection
  *  - any custom scenario
  *
- * @since 1.6
+ * @since 1.7
  * @param string $meta arbitrary string that will trigger an action
  * @return string Result
  */
@@ -1951,7 +1951,7 @@ function yourls_maintenance_behavior( $meta ) {
  *
  * Long desc, multiline
  *
- * @since 1.6
+ * @since 1.7
  * @param bool $active true to enable, false to disable
  * @param string $meta arbitrary string to pass additional details or a function callback. See yourls_maintenance_behavior()
  * @return bool file write or file unlink result
