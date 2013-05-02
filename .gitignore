@@ -6,6 +6,7 @@
 user/*
 !user/config-sample.php
 user/maintenance.php
+.maintenance
 .htaccess
 .maintenance
 *.config
