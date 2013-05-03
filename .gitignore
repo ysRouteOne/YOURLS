@@ -8,6 +8,7 @@ user/*
 user/maintenance.php
 .maintenance
 .htaccess
+.maintenance
 *.config
 *.conf
 [Rr]obots.txt
