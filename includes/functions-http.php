@@ -1,184 +1,105 @@
 <?php
-// TODO: improve this.
-// yourls_get_http_transport: use static vars
-// yourls_get_remote_content: return array( content, status, code )
+// Functions that relate to HTTP stuff
+
+// TODO: ponder: always include functions-http? always include Requests?
+
+/*
+$headers = array('Accept' => 'application/json');
+$options = array('auth' => array('user', 'pass'));
+$request = Requests::get('https://api.github.com/gists', $headers, $options);
+
+var_dump($request->status_code);
+// int(200)
+
+var_dump($request->headers['content-type']);
+// string(31) "application/json; charset=utf-8"
+
+var_dump($request->body);
+// string(26891) "[...]"
+*/
 
 /**
- * Determine best transport for GET request. Return 'curl', 'fopen', 'fsockopen' or false if nothing works
+ * Check if Requests class is defined, include Requests library if need be
  *
- * Order of preference: curl, fopen, fsockopen.
+ * All HTTP functions should perform that check prior to any operation. This is to avoid
+ * include()-ing all the Requests files on every YOURLS instance disregarding whether needed or not.
  *
+ * @since 1.7
  */
-function yourls_get_http_transport( $url ) {
+function yourls_http_load_library() {
+	if ( !class_exists( 'Requests', false ) ) {
+		require_once dirname(__FILE__) . '/Requests/Requests.php';
+		Requests::register_autoloader();
+	}
+}
 
-	$transports = array();
+
+/**
+ * Perform a GET request, return response array
+ *
+ * Wrapper for yourls_http_request()
+ *
+ * @since 1.7
+ * @see yourls_http_request
+ * @return array Response
+ */
+function yourls_http_get( $url, $headers = array(), $data = array(), $options = array() ) {
+	return yourls_http_request( 'GET', $url, $headers, $data, $options );
+}
+
+function yourls_http_retrieve_body( $response ) {
+	return $response->body;
+}
+
+
+/**
+ * Perform a HTTP request, return response array
+ *
+ * Long desc, multiline
+ *
+ * @since 1.7
+ * @param string $var Stuff
+ * @return string Result
+ */
+function yourls_http_request( $type, $url, $headers, $data, $options ) {
+	yourls_http_load_library();
 	
-	$scheme = parse_url( $url, PHP_URL_SCHEME );
-	$is_ssl = ( $scheme == 'https' || $scheme == 'ssl' );
+	$options = array_merge( yourls_http_default_options(), $options );
 
-	// Test transports by order of preference, best first
-
-	// curl
-	if( function_exists( 'curl_init' ) && function_exists( 'curl_exec' ) )
-		$transports[]= 'curl';
-
-	// fopen. Doesn't work with https?
-	if( !$is_ssl && function_exists( 'fopen' ) && ini_get( 'allow_url_fopen' ) )
-		$transports[]= 'fopen';
-		
-	// fsock
-	if( function_exists( 'fsockopen' ) )
-		$transports[]= 'fsockopen';
-	
-	$best = ( $transports ? array_shift( $transports ) : false );
-	
-	return yourls_apply_filter( 'get_http_transport', $best, $transports );
+	return Requests::request( $url, $headers, $data, $type, $options );
 }
 
 /**
- * Get remote content via a GET request using best transport available
+ * Default HTTP requests options for YOURLS
  *
+ * @since 1.7
+ * @return array Options
+ */
+function yourls_http_default_options() {
+	$options = array(
+		'timeout' => '5',
+		'useragent' => yourls_http_user_agent(),
+		'follow_redirects' => true,
+		'redirects' => 3,
+		//'verify' => false,
+		//'verifyname' => false,
+	);
+
+	return yourls_apply_filter( 'http_default_options', $options );	
+}
+
+
+/**
+ * Deprecated. Get remote content via a GET request using best transport available
  * Returns $content (might be an error message) or false if no transport available
  *
  */
 function yourls_get_remote_content( $url,  $maxlen = 4096, $timeout = 5 ) {
-	$url = yourls_sanitize_url( $url );
-
-	$transport = yourls_get_http_transport( $url );
-	if( $transport ) {
-		$content = call_user_func( 'yourls_get_remote_content_'.$transport, $url, $maxlen, $timeout );
-	} else {
-		$content = false;
-	}
-	
-	return yourls_apply_filter( 'get_remote_content', $content, $url, $maxlen, $timeout );
+	yourls_deprecated_function( __FUNCTION__, '1.7', 'yourls_http_get' );
+	$response = yourls_http_get( $url );
+	return $response->body;
 }
 
-/**
- * Get remote content using curl. Needs sanitized $url. Returns $content or false
- *
- */
-function yourls_get_remote_content_curl( $url, $maxlen = 4096, $timeout = 5 ) {
-	
-	$ch = curl_init();
-	curl_setopt( $ch, CURLOPT_URL, $url );
-	curl_setopt( $ch, CURLOPT_CONNECTTIMEOUT, $timeout );
-	curl_setopt( $ch, CURLOPT_TIMEOUT, $timeout );
-	curl_setopt( $ch, CURLOPT_RETURNTRANSFER, 1 );
-	curl_setopt( $ch, CURLOPT_FOLLOWLOCATION, 1 ); // follow redirects...
-	curl_setopt( $ch, CURLOPT_MAXREDIRS, 3 ); // ... but not more than 3
-	curl_setopt( $ch, CURLOPT_USERAGENT, yourls_http_user_agent() );
-	curl_setopt( $ch, CURLOPT_RANGE, "0-{$maxlen}" ); // Get no more than $maxlen
-	curl_setopt( $ch, CURLOPT_SSL_VERIFYPEER, 0 ); // dont check SSL certificates
-	curl_setopt( $ch, CURLOPT_HEADER, 0 );
-
-	$response = curl_exec( $ch );
-	
-	if( !$response || curl_error( $ch ) ) {
-		//$response = 'Error: '.curl_error( $ch );
-		return false;
-	}
-
-	curl_close( $ch );
-
-	return substr( $response, 0, $maxlen ); // substr in case CURLOPT_RANGE not supported
-}
-
-/**
- * Get remote content using fopen. Needs sanitized $url. Returns $content or false
- *
- */
-function yourls_get_remote_content_fopen( $url, $maxlen = 4096, $timeout = 5 ) {
-	$content = false;
-	
-	$initial_timeout = @ini_set( 'default_socket_timeout', $timeout );
-	$initial_user_agent = @ini_set( 'user_agent', yourls_http_user_agent() );
-
-	// Basic error reporting shortcut
-	set_error_handler( create_function('$code, $string', 'global $ydb; $ydb->fopen_error = $string;') );
-	
-	$fp = fopen( $url, 'r');
-	if( $fp !== false ) {
-		$buffer = min( $maxlen, 4096 );
-		while ( !feof( $fp ) && !( strlen( $content ) >= $maxlen ) ) {
-			$content .= fread( $fp, $buffer );
-		}
-		fclose( $fp );
-	}
-
-	if( $initial_timeout !== false )
-		@ini_set( 'default_socket_timeout', $initial_timeout ); 
-	if( $initial_user_agent !== false )
-		@ini_set( 'user_agent', $initial_user_agent );
-		
-
-	restore_error_handler();
-	
-	if( !$content ) {
-		//global $ydb;
-		//$content = 'Error: '.strip_tags( $ydb->fopen_error );
-		return false;
-	}
-	
-	return $content;
-}
-
-/**
- * Get remote content using fsockopen. Needs sanitized $url. Returns $content or false
- *
- */
-function yourls_get_remote_content_fsockopen( $url, $maxlen = 4096, $timeout = 5 ) {
-	// get the host name and url path
-	$parsed_url = parse_url( $url );
-
-	$host = $parsed_url['host'];
-	if ( isset( $parsed_url['path'] ) ) {
-		$path = $parsed_url['path'];
-	} else {
-		$path = '/'; // the url is pointing to the host like http://www.mysite.com
-	}
-
-	if ( isset( $parsed_url['query'] ) ) {
-		$path .= '?' . $parsed_url['query'];
-	}
-
-	if ( isset( $parsed_url['port'] ) ) {
-		$port = $parsed_url['port'];
-	} else {
-		$port = '80';	
-	}
-
-	$response = false;
-
-	// connect to the remote server
-	$fp = @fsockopen( $host, $port, $errno, $errstr, $timeout );
-	if( $fp !== false ) {
-		// send some fake headers to mimick a standard browser
-		fputs($fp, "GET $path HTTP/1.0\r\n" .
-			"Host: $host\r\n" . 
-			"User-Agent: " . yourls_http_user_agent() . "\r\n" .
-			"Accept: */*\r\n" .
-			"Accept-Language: en-us,en;q=0.5\r\n" .
-			"Accept-Charset: ISO-8859-1,utf-8;q=0.7,*;q=0.7\r\n" .
-			"Keep-Alive: 300\r\n" .
-			"Connection: keep-alive\r\n" .
-			"Referer: http://$host\r\n\r\n");
-
-		// retrieve the response from the remote server
-		$buffer = min( $maxlen, 4096 );
-		while ( !feof( $fp ) && !( strlen( $response ) >= $maxlen ) ) { // get more or less $maxlen bytes (between $maxlen and ($maxlen + ($maxlen-1)) actually)
-			$response .= fread( $fp, $buffer );
-		}
-
-		fclose( $fp );
-	} else {
-		//$response = trim( "Error: #$errno. $errstr" );
-		return false;
-	}
-
-	// return the file content
-	return $response;
-}
 
 /**
  * Return funky user agent string

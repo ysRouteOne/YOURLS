@@ -1703,7 +1703,7 @@ function yourls_get_remote_title( $url ) {
 
 	$title = $charset = false;
 	
-	$content = yourls_get_remote_content( $url );
+	$content = yourls_http_retrieve_body( yourls_http_get( $url ) );
 	
 	// If false, return url as title.
 	// Todo: improve this with temporary title when shorturl_meta available?
